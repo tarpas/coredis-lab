@@ -1,0 +1,83 @@
+# testmon lab: full test run with per-test coverage for each upstream commit listed in lab/config.json.
+# Each job is independent; results are uploaded as one artifact per commit.
+name: lab-dataset
+
+on:
+  push:
+    branches: ["lab/dataset"]
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      config: ${{ steps.cfg.outputs.config }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: cfg
+        run: echo "config=$(jq -c . lab/config.json)" >> "$GITHUB_OUTPUT"
+
+  run:
+    needs: setup
+    name: ${{ matrix.sha }}
+    runs-on: ${{ fromJSON(needs.setup.outputs.config).runs_on }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(needs.setup.outputs.config).max_parallel }}
+      matrix:
+        sha: ${{ fromJSON(needs.setup.outputs.config).shas }}
+    env:
+      CFG: ${{ needs.setup.outputs.config }}
+      OUT: ${{ github.workspace }}/lab-out
+      HOST_OS: linux
+      CI: "True"
+      COMPOSE_PARALLEL_LIMIT: 1
+      COREDIS_REDIS_VERSION: ${{ fromJSON(needs.setup.outputs.config).redis }}
+      COREDIS_RUNTIME_CHECKS: "True"
+      COREDIS_UVLOOP: "False"
+      HATCH_BUILD_HOOKS_ENABLE: "0" # pure Python: mypyc-compiled modules are invisible to coverage
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ fromJSON(needs.setup.outputs.config).upstream }}
+          ref: ${{ matrix.sha }}
+          fetch-depth: 0 # hatch-vcs derives the version from tags
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ fromJSON(needs.setup.outputs.config).python }}
+      - name: Install (locked)
+        run: |
+          mkdir -p "$OUT"
+          start=$(date +%s.%N)
+          uv sync --locked --all-extras --group ci
+          echo "install_seconds=$(echo "$(date +%s.%N) - $start" | bc)" >> "$OUT/meta.env"
+          cp uv.lock "$OUT/uv.lock"
+          uv pip freeze > "$OUT/freeze.txt"
+      - name: Tests with per-test coverage
+        run: |
+          params=$(jq -r .test_params <<< "$CFG")
+          start=$(date +%s.%N)
+          set +e
+          eval uv run --group dev pytest --timeout=60 --reruns 2 \
+            --cov=coredis --cov-context=test --cov-report= \
+            --junitxml="$OUT/junit.xml" -o junit_family=xunit1 \
+            -p no:cacheprovider $params 2>&1 | tee "$OUT/pytest.log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          end=$(date +%s.%N)
+          {
+            echo "sha=${{ matrix.sha }}"
+            echo "pytest_exit=$rc"
+            echo "pytest_seconds=$(echo "$end - $start" | bc)"
+            echo "runner=$RUNNER_NAME"
+            echo "python=$(uv run python -V)"
+            echo "commit_date=$(git show -s --format=%cI HEAD)"
+          } >> "$OUT/meta.env"
+          mv .coverage "$OUT/coverage.sqlite"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lab-${{ matrix.sha }}
+          path: lab-out/
+          retention-days: 90

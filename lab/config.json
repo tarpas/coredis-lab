@@ -1,0 +1,12 @@
+{
+  "upstream": "alisaifee/coredis",
+  "runs_on": "ubuntu-latest",
+  "max_parallel": 4,
+  "python": "3.13",
+  "redis": "8.2",
+  "test_params": "-m '(not (dragonfly or valkey))'",
+  "shas": [
+    "b169b67c46edc5aa096635ed7050f15d5c0e74e8",
+    "983868aedfac47fd4c33a15134667fae19682725"
+  ]
+}
