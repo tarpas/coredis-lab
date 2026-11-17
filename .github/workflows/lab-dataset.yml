@@ -50,7 +50,7 @@ jobs:
         run: |
           mkdir -p "$OUT"
           start=$(date +%s.%N)
-          uv sync --locked --all-extras --group ci
+          uv sync --locked --all-extras --group ci --group dev
           echo "install_seconds=$(echo "$(date +%s.%N) - $start" | bc)" >> "$OUT/meta.env"
           cp uv.lock "$OUT/uv.lock"
           uv pip freeze > "$OUT/freeze.txt"
@@ -59,7 +59,7 @@ jobs:
           params=$(jq -r .test_params <<< "$CFG")
           start=$(date +%s.%N)
           set +e
-          eval uv run --group dev pytest --timeout=60 --reruns 2 \
+          eval uv run --no-sync pytest --timeout=60 --reruns 2 \
             --cov=coredis --cov-context=test --cov-report= \
             --junitxml="$OUT/junit.xml" -o junit_family=xunit1 \
             -p no:cacheprovider $params 2>&1 | tee "$OUT/pytest.log"
@@ -71,7 +71,7 @@ jobs:
             echo "pytest_exit=$rc"
             echo "pytest_seconds=$(echo "$end - $start" | bc)"
             echo "runner=$RUNNER_NAME"
-            echo "python=$(uv run python -V)"
+            echo "python=$(uv run --no-sync python -V)"
             echo "commit_date=$(git show -s --format=%cI HEAD)"
           } >> "$OUT/meta.env"
           mv .coverage "$OUT/coverage.sqlite"
