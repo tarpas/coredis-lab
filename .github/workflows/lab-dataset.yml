@@ -1,11 +1,16 @@
 # testmon lab: full test run with per-test coverage for each upstream commit listed in lab/config.json.
 # Each job is independent; results are uploaded as one artifact per commit.
 name: lab-dataset
+run-name: lab ${{ inputs.sha || 'config' }}
 
+# Started one commit at a time by tools/autotester/lab_driver.py in testmon-dev (throttled).
 on:
-  push:
-    branches: ["lab/dataset"]
   workflow_dispatch:
+    inputs:
+      sha:
+        description: "Upstream commit to test; empty = all shas in lab/config.json"
+        required: false
+        default: ""
 
 jobs:
   setup:
@@ -15,7 +20,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: cfg
-        run: echo "config=$(jq -c . lab/config.json)" >> "$GITHUB_OUTPUT"
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          if [ -n "$SHA" ]; then
+            echo "config=$(jq -c --arg s "$SHA" '.shas = [$s]' lab/config.json)" >> "$GITHUB_OUTPUT"
+          else
+            echo "config=$(jq -c . lab/config.json)" >> "$GITHUB_OUTPUT"
+          fi
 
   run:
     needs: setup
