@@ -69,9 +69,11 @@ jobs:
       - name: Tests with per-test coverage
         run: |
           params=$(jq -r .test_params <<< "$CFG")
+          # pytest-timeout is a coredis dependency only since 2026-01
+          if uv run --no-sync python -c "import pytest_timeout" 2>/dev/null; then params="--timeout=60 $params"; fi
           start=$(date +%s.%N)
           set +e
-          eval uv run --no-sync pytest --timeout=60 --reruns 2 \
+          eval uv run --no-sync pytest --reruns 2 \
             --cov=coredis --cov-context=test --cov-report= \
             --junitxml="$OUT/junit.xml" -o junit_family=xunit1 \
             -p no:cacheprovider $params 2>&1 | tee "$OUT/pytest.log"
