@@ -135,7 +135,10 @@ jobs:
           export R2_ACCOUNT=$(jq -r .r2_account lab/config.json) R2_BUCKET=$(jq -r .r2_bucket lab/config.json)
           upstream=$(jq -r '.r2_prefix + "/" + .upstream' lab/config.json)
           # one-off: remove objects written before the testmon/ prefix existed
-          echo x > x && lab/r2_put.sh x testmon/.keep
+          export AWS_ACCESS_KEY_ID=$(curl -sS -H "Authorization: Bearer $R2_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$R2_ACCOUNT/tokens/verify" | jq -r .result.id)
+          export AWS_SECRET_ACCESS_KEY=$(printf %s "$R2_TOKEN" | sha256sum | cut -d' ' -f1) AWS_DEFAULT_REGION=auto
+          echo "::add-mask::$AWS_SECRET_ACCESS_KEY"
           for k in probe.txt alisaifee/coredis/lab-028aa7d677f98f3a0bf4e2f76e6f508370d61f18.tgz; do
             aws s3 rm --only-show-errors "s3://$R2_BUCKET/$k" --endpoint-url "https://$R2_ACCOUNT.r2.cloudflarestorage.com" || true
           done
