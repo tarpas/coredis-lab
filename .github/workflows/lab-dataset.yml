@@ -71,9 +71,20 @@ jobs:
           echo "install_seconds=$(echo "$(date +%s.%N) - $start" | bc)" >> "$OUT/meta.env"
           cp uv.lock "$OUT/uv.lock"
           uv pip freeze > "$OUT/freeze.txt"
+      # lab tooling from this branch; kept outside the upstream checkout
+      - uses: actions/checkout@v4
+        with:
+          path: .lab
+          sparse-checkout: lab
+      - run: mkdir -p "$RUNNER_TEMP/lab" && cp .lab/lab/lab_reads.py "$RUNNER_TEMP/lab/" && rm -rf .lab
       - name: Tests with per-test coverage
+        env:
+          LAB_READS: ${{ github.workspace }}/lab-out/reads.tsv
         run: |
           params=$(jq -r .test_params <<< "$CFG")
+          # per-test file reads (lab/lab_reads.py)
+          export PYTHONPATH="$RUNNER_TEMP/lab${PYTHONPATH:+:$PYTHONPATH}"
+          params="-p lab_reads $params"
           # pytest-timeout is a coredis dependency only since 2026-01
           if uv run --no-sync python -c "import pytest_timeout" 2>/dev/null; then params="--timeout=60 $params"; fi
           start=$(date +%s.%N)
