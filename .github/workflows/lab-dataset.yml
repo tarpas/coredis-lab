@@ -111,10 +111,13 @@ jobs:
           KEY: ${{ fromJSON(needs.setup.outputs.config).upstream }}/lab-${{ matrix.sha }}.tgz
         run: |
           tar -C lab-out -czf "$RUNNER_TEMP/lab.tgz" .
-          curl -sS --fail-with-body --retry 3 -X PUT \
-            -H "Authorization: Bearer $R2_TOKEN" -H "Content-Type: application/gzip" \
-            --data-binary @"$RUNNER_TEMP/lab.tgz" \
-            "https://api.cloudflare.com/client/v4/accounts/$R2_ACCOUNT/r2/buckets/$R2_BUCKET/objects/$KEY"
+          # S3 credentials from the API token: key id = token id, secret = sha256(token)
+          export AWS_ACCESS_KEY_ID=$(curl -sS -H "Authorization: Bearer $R2_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$R2_ACCOUNT/tokens/verify" | jq -r .result.id)
+          export AWS_SECRET_ACCESS_KEY=$(printf %s "$R2_TOKEN" | sha256sum | cut -d' ' -f1) AWS_DEFAULT_REGION=auto
+          echo "::add-mask::$AWS_SECRET_ACCESS_KEY"
+          aws s3 cp --only-show-errors "$RUNNER_TEMP/lab.tgz" "s3://$R2_BUCKET/$KEY" \
+            --endpoint-url "https://$R2_ACCOUNT.r2.cloudflarestorage.com"
 
   backfill:
     if: ${{ inputs.backfill }}
@@ -132,9 +135,7 @@ jobs:
           export R2_ACCOUNT=$(jq -r .r2_account lab/config.json) R2_BUCKET=$(jq -r .r2_bucket lab/config.json)
           upstream=$(jq -r .upstream lab/config.json)
           echo "R2_TOKEN length: ${#R2_TOKEN}"  # diagnostics, never the value
-          curl -sS -H "Authorization: Bearer $R2_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$R2_ACCOUNT/tokens/verify"; echo
-          curl -sS -H "Authorization: Bearer $R2_TOKEN" "https://api.cloudflare.com/client/v4/user/tokens/verify"; echo
-          curl -sS -H "Authorization: Bearer $R2_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$R2_ACCOUNT/r2/buckets"; echo
+          echo test > probe.txt && lab/r2_put.sh probe.txt probe.txt && echo "probe upload ok"
           gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
             --jq '.artifacts[] | select(.expired | not) | select(.name | startswith("lab-")) | "\(.id) \(.name)"' \
             | sort -k2,2 -u > arts.txt
