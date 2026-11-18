@@ -1,0 +1,38 @@
+# testmon lab: copy existing lab-<sha> artifacts of this repo to R2 (one-off, idempotent).
+name: lab-backfill
+run-name: backfill ${{ inputs.limit }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max artifacts to copy (0 = all)"
+        required: false
+        default: "0"
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      R2_TOKEN: ${{ secrets.R2_TOKEN }}
+      LIMIT: ${{ inputs.limit }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          export R2_ACCOUNT=$(jq -r .r2_account lab/config.json) R2_BUCKET=$(jq -r .r2_bucket lab/config.json)
+          upstream=$(jq -r .upstream lab/config.json)
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | select(.expired | not) | select(.name | startswith("lab-")) | "\(.id) \(.name)"' \
+            | sort -k2,2 -u > arts.txt
+          [ "$LIMIT" != "0" ] && head -n "$LIMIT" arts.txt > a && mv a arts.txt
+          wc -l arts.txt
+          while read -r id name; do
+            rm -rf d && mkdir d
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > a.zip && unzip -q a.zip -d d
+            tar -C d -czf "$name.tgz" .
+            echo "$name"; lab/r2_put.sh "$name.tgz" "$upstream/$name.tgz"
+          done < arts.txt

@@ -95,3 +95,18 @@ jobs:
           name: lab-${{ matrix.sha }}
           path: lab-out/
           retention-days: 90
+      # Durable copy (artifacts expire after 90 days). Soft: a failed upload keeps the GHA artifact.
+      - name: Upload to R2
+        if: always()
+        continue-on-error: true
+        env:
+          R2_TOKEN: ${{ secrets.R2_TOKEN }}
+          R2_ACCOUNT: ${{ fromJSON(needs.setup.outputs.config).r2_account }}
+          R2_BUCKET: ${{ fromJSON(needs.setup.outputs.config).r2_bucket }}
+          KEY: ${{ fromJSON(needs.setup.outputs.config).upstream }}/lab-${{ matrix.sha }}.tgz
+        run: |
+          tar -C lab-out -czf "$RUNNER_TEMP/lab.tgz" .
+          curl -sS --fail-with-body --retry 3 -X PUT \
+            -H "Authorization: Bearer $R2_TOKEN" -H "Content-Type: application/gzip" \
+            --data-binary @"$RUNNER_TEMP/lab.tgz" \
+            "https://api.cloudflare.com/client/v4/accounts/$R2_ACCOUNT/r2/buckets/$R2_BUCKET/objects/$KEY"
