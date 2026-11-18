@@ -131,6 +131,10 @@ jobs:
       - run: |
           export R2_ACCOUNT=$(jq -r .r2_account lab/config.json) R2_BUCKET=$(jq -r .r2_bucket lab/config.json)
           upstream=$(jq -r .upstream lab/config.json)
+          echo "R2_TOKEN length: ${#R2_TOKEN}"  # diagnostics, never the value
+          curl -sS -H "Authorization: Bearer $R2_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$R2_ACCOUNT/tokens/verify"; echo
+          curl -sS -H "Authorization: Bearer $R2_TOKEN" "https://api.cloudflare.com/client/v4/user/tokens/verify"; echo
+          curl -sS -H "Authorization: Bearer $R2_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$R2_ACCOUNT/r2/buckets"; echo
           gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
             --jq '.artifacts[] | select(.expired | not) | select(.name | startswith("lab-")) | "\(.id) \(.name)"' \
             | sort -k2,2 -u > arts.txt
