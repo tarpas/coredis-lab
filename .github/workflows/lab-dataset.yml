@@ -108,7 +108,7 @@ jobs:
           R2_TOKEN: ${{ secrets.R2_TOKEN }}
           R2_ACCOUNT: ${{ fromJSON(needs.setup.outputs.config).r2_account }}
           R2_BUCKET: ${{ fromJSON(needs.setup.outputs.config).r2_bucket }}
-          KEY: ${{ fromJSON(needs.setup.outputs.config).upstream }}/lab-${{ matrix.sha }}.tgz
+          KEY: ${{ fromJSON(needs.setup.outputs.config).r2_prefix }}/${{ fromJSON(needs.setup.outputs.config).upstream }}/lab-${{ matrix.sha }}.tgz
         run: |
           tar -C lab-out -czf "$RUNNER_TEMP/lab.tgz" .
           # S3 credentials from the API token: key id = token id, secret = sha256(token)
@@ -133,9 +133,12 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           export R2_ACCOUNT=$(jq -r .r2_account lab/config.json) R2_BUCKET=$(jq -r .r2_bucket lab/config.json)
-          upstream=$(jq -r .upstream lab/config.json)
-          echo "R2_TOKEN length: ${#R2_TOKEN}"  # diagnostics, never the value
-          echo test > probe.txt && lab/r2_put.sh probe.txt probe.txt && echo "probe upload ok"
+          upstream=$(jq -r '.r2_prefix + "/" + .upstream' lab/config.json)
+          # one-off: remove objects written before the testmon/ prefix existed
+          echo x > x && lab/r2_put.sh x testmon/.keep
+          for k in probe.txt alisaifee/coredis/lab-028aa7d677f98f3a0bf4e2f76e6f508370d61f18.tgz; do
+            aws s3 rm --only-show-errors "s3://$R2_BUCKET/$k" --endpoint-url "https://$R2_ACCOUNT.r2.cloudflarestorage.com" || true
+          done
           gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
             --jq '.artifacts[] | select(.expired | not) | select(.name | startswith("lab-")) | "\(.id) \(.name)"' \
             | sort -k2,2 -u > arts.txt
