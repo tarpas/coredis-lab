@@ -43,6 +43,8 @@ def _hook(event, args):
         if path is None:
             return
         path = os.fsdecode(path)
+        if path.startswith("<"):  # pseudo file names such as <unknown>, <string>
+            return
         if path.endswith(SKIP_SUFFIXES):
             return
         full = os.path.abspath(path)
