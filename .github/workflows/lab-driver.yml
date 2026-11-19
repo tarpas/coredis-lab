@@ -1,0 +1,28 @@
+# Throttled dispatch of lab dataset runs: one pass of lab/driver.py (branch lab/dataset)
+# every 10 minutes. Scheduled workflows only run from the default branch, hence here.
+name: lab driver
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: lab-driver
+
+jobs:
+  pass:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: lab/dataset
+          sparse-checkout: lab
+      - env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 lab/driver.py --repo "$GITHUB_REPOSITORY" --queue lab/queue.txt --once | tee -a "$GITHUB_STEP_SUMMARY"
