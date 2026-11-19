@@ -29,6 +29,7 @@ def request(method, path, params=None, body=None):
     url = f"{API}{path}" + (f"?{urllib.parse.urlencode(params)}" if params else "")
     req = urllib.request.Request(url, method=method, data=json.dumps(body).encode() if body else None)
     req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("Content-Type", "application/json")
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
     if token := os.environ.get("GITHUB_TOKEN"):
         req.add_header("Authorization", f"Bearer {token}")
